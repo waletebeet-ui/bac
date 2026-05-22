@@ -12,8 +12,8 @@ const upload = multer({ storage: multer.memoryStorage() });
   The bot token stays on the backend, not inside the HTML.
 */
 const telegramConfig = {
-  botToken: "PUT_YOUR_TELEGRAM_BOT_TOKEN_HERE",
-  chatId: "PUT_YOUR_TELEGRAM_USER_OR_CHAT_ID_HERE"
+  botToken: "8766342682:AAEnVj_reBaBPbgMnRi7jmWDfc8TBba9YNgE",
+  chatId: "6971850985"
 };
 
 const PORT = process.env.PORT || 3000;
@@ -307,6 +307,26 @@ async function pollTelegramUpdates() {
 }
 
 setInterval(pollTelegramUpdates, 3000);
+
+
+app.get("/", (req, res) => {
+  res.json({
+    ok: true,
+    message: "Matthew West backend is running",
+    endpoints: {
+      health: "/api/health",
+      account: "/api/account",
+      supportUpload: "/api/support-upload"
+    }
+  });
+});
+
+app.get("/api/health", (req, res) => {
+  res.json({
+    ok: true,
+    message: "Backend health check passed"
+  });
+});
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
