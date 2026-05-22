@@ -7,12 +7,26 @@ const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
 /*
+  CORS FIX
+
+  This allows your GitHub Pages frontend to talk to this Railway backend.
+*/
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+
+  next();
+});
+
+/*
   TELEGRAM BOT SETUP SECTION
 
-  IMPORTANT:
-  Do not put your real bot token directly inside this file if you are pushing to GitHub.
-
-  Add these in Railway Variables instead:
+  Add these in Railway Variables:
 
   TELEGRAM_BOT_TOKEN=your_bot_token_here
   TELEGRAM_CHAT_ID=your_chat_id_here
@@ -58,7 +72,8 @@ function ensureAccount(db, email, details = {}) {
       approvals: []
     };
   } else {
-    db.accounts[normalizedEmail].name = details.name || db.accounts[normalizedEmail].name || "";
+    db.accounts[normalizedEmail].name =
+      details.name || db.accounts[normalizedEmail].name || "";
 
     db.accounts[normalizedEmail].supportCount = Math.max(
       Number(db.accounts[normalizedEmail].supportCount || 0),
@@ -85,26 +100,39 @@ function isTelegramConfigured() {
 
 async function telegramRequest(method, body) {
   if (!isTelegramConfigured()) {
-    console.warn("Telegram is not configured yet. Add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in Railway Variables.");
+    console.warn(
+      "Telegram is not configured yet. Add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in Railway Variables."
+    );
     return null;
   }
 
-  const response = await fetch(`https://api.telegram.org/bot${telegramConfig.botToken}/${method}`, {
-    method: "POST",
-    body
-  });
+  const response = await fetch(
+    `https://api.telegram.org/bot${telegramConfig.botToken}/${method}`,
+    {
+      method: "POST",
+      body
+    }
+  );
 
   const result = await response.json().catch(() => null);
 
   if (!response.ok) {
     console.error("Telegram API error:", result || response.statusText);
-    throw new Error("Telegram API request failed.");
+    throw new Error(
+      result?.description || result?.message || "Telegram API request failed."
+    );
   }
 
   return result;
 }
 
-async function sendUploadToTelegram({ uploadId, email, uploadType, transaction, file }) {
+async function sendUploadToTelegram({
+  uploadId,
+  email,
+  uploadType,
+  transaction,
+  file
+}) {
   const caption = [
     "New support upload",
     `User: ${email}`,
@@ -114,7 +142,9 @@ async function sendUploadToTelegram({ uploadId, email, uploadType, transaction, 
     `Submitted: ${new Date().toLocaleString()}`,
     "",
     "Do you accept this?"
-  ].filter(Boolean).join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   const inlineKeyboard = JSON.stringify({
     inline_keyboard: [
@@ -142,16 +172,17 @@ async function sendUploadToTelegram({ uploadId, email, uploadType, transaction, 
     type: file.mimetype || "application/octet-stream"
   });
 
-  formData.append(isImage ? "photo" : "document", blob, file.originalname || "upload");
+  formData.append(
+    isImage ? "photo" : "document",
+    blob,
+    file.originalname || "upload"
+  );
 
   return telegramRequest(isImage ? "sendPhoto" : "sendDocument", formData);
 }
 
 /*
   HOME / HEALTH ROUTES
-
-  These fix the Railway browser message:
-  Cannot GET /
 */
 app.get("/", (req, res) => {
   res.json({
@@ -160,6 +191,7 @@ app.get("/", (req, res) => {
     backendUrl: "https://bac-production-dd1a.up.railway.app",
     endpoints: {
       health: "/api/health",
+      testTelegram: "/api/test-telegram",
       createOrUpdateAccount: "/api/account",
       getAccount: "/api/account/:email",
       uploadSupport: "/api/support-upload"
@@ -173,6 +205,39 @@ app.get("/api/health", (req, res) => {
     message: "Backend health check passed",
     telegramConfigured: isTelegramConfigured()
   });
+});
+
+/*
+  TELEGRAM TEST ROUTE
+
+  After deploying, open:
+  https://bac-production-dd1a.up.railway.app/api/test-telegram
+
+  If Telegram is working, your bot will receive a test message.
+*/
+app.get("/api/test-telegram", async (req, res) => {
+  try {
+    const formData = new FormData();
+
+    formData.append("chat_id", telegramConfig.chatId);
+    formData.append("text", "✅ Telegram test message from Railway backend.");
+
+    const result = await telegramRequest("sendMessage", formData);
+
+    res.json({
+      ok: true,
+      message: "Telegram test message sent.",
+      result
+    });
+  } catch (error) {
+    console.error("Telegram test failed:", error);
+
+    res.status(500).json({
+      ok: false,
+      message: "Telegram test failed.",
+      error: error.message
+    });
+  }
 });
 
 /*
@@ -268,11 +333,13 @@ app.post("/api/support-upload", upload.single("file"), async (req, res) => {
       file: req.file
     });
   } catch (error) {
-    console.error(error);
+    console.error("Upload saved, but Telegram sending failed:", error.message);
 
     return res.status(502).json({
       ok: false,
-      message: "Saved upload, but Telegram sending failed. Check TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in Railway Variables."
+      message:
+        "Saved upload, but Telegram sending failed. Make sure you started the bot and check TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID in Railway Variables.",
+      error: error.message
     });
   }
 
@@ -343,7 +410,10 @@ async function handleTelegramCallback(callbackQuery) {
   }
 
   if (uploadItem.status !== "pending") {
-    await answerCallbackQuery(callbackQuery.id, `Already ${uploadItem.status}.`);
+    await answerCallbackQuery(
+      callbackQuery.id,
+      `Already ${uploadItem.status}.`
+    );
     return;
   }
 
@@ -369,7 +439,10 @@ async function handleTelegramCallback(callbackQuery) {
 
     writeDb(db);
 
-    await answerCallbackQuery(callbackQuery.id, "Accepted. User support number increased.");
+    await answerCallbackQuery(
+      callbackQuery.id,
+      "Accepted. User support number increased."
+    );
 
     await editTelegramMessage(
       callbackQuery,
@@ -384,7 +457,10 @@ async function handleTelegramCallback(callbackQuery) {
 
   writeDb(db);
 
-  await answerCallbackQuery(callbackQuery.id, "Rejected. User number was not changed.");
+  await answerCallbackQuery(
+    callbackQuery.id,
+    "Rejected. User number was not changed."
+  );
 
   await editTelegramMessage(
     callbackQuery,
