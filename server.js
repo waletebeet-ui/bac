@@ -134,12 +134,12 @@ async function sendUploadToTelegram({
   file
 }) {
   const caption = [
-    "New support upload",
-    `User: ${email}`,
-    `Type: ${uploadType || "support"}`,
-    transaction ? `Transaction: ${transaction}` : "",
-    `File: ${file.originalname}`,
-    `Submitted: ${new Date().toLocaleString()}`,
+    "📥 New support upload",
+    `👤 User: ${email}`,
+    `📌 Type: ${uploadType || "support"}`,
+    transaction ? `🔗 Transaction: ${transaction}` : "",
+    `📎 File: ${file.originalname}`,
+    `🕒 Submitted: ${new Date().toLocaleString()}`,
     "",
     "Do you accept this?"
   ]
@@ -161,24 +161,25 @@ async function sendUploadToTelegram({
     ]
   });
 
-  const isImage = String(file.mimetype || "").startsWith("image/");
   const formData = new FormData();
 
   formData.append("chat_id", telegramConfig.chatId);
   formData.append("caption", caption);
   formData.append("reply_markup", inlineKeyboard);
 
+  /*
+    IMPORTANT:
+    We send uploads as Telegram DOCUMENTS, not photos.
+    This preserves the exact original image/file so you can view and download it in Telegram
+    without Telegram compressing the image quality.
+  */
   const blob = new Blob([file.buffer], {
     type: file.mimetype || "application/octet-stream"
   });
 
-  formData.append(
-    isImage ? "photo" : "document",
-    blob,
-    file.originalname || "upload"
-  );
+  formData.append("document", blob, file.originalname || "upload");
 
-  return telegramRequest(isImage ? "sendPhoto" : "sendDocument", formData);
+  return telegramRequest("sendDocument", formData);
 }
 
 /*
